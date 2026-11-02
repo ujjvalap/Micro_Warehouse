@@ -1,5 +1,5 @@
 
-package com.warehouse.app;
+package com.warehouse2.app;
 
 import com.warehouse.config.JdbcConfig;
 import com.warehouse.dao.ProductDao;
