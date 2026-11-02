@@ -1,24 +1,33 @@
-
 package com.warehouse.dao;
 
+import com.warehouse.model.OrderItem;
 import com.warehouse.model.Product;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
+/**
+ * Data Access Object interface for Product Catalog & Inventory operations.
+ */
 public interface ProductDao {
 
-    // Add a new product
     int addProduct(Product product);
 
-    // Retrieve all products
-    List<Product> getAllProducts();
+    List<Product> findAll();
 
-    // Retrieve a product using SKU ID
-    Product getProductById(int skuId);
+    Optional<Product> findById(int skuId);
 
-    // Update product price and category
     int updateProduct(Product product);
 
-    // Increase existing product stock
     int replenishStock(int skuId, int quantity);
+
+    boolean deductStock(int skuId, int quantity);
+
+    Map<Integer, Integer> findStockForUpdate(Collection<Integer> skuIds);
+
+    int[] deductStockBatch(List<OrderItem> items);
+
+    List<Product> findLowStockProducts(int threshold);
 }

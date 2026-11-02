@@ -1,8 +1,10 @@
-
 package com.warehouse.model;
 
 import java.math.BigDecimal;
 
+/**
+ * Domain entity representing a warehouse product (SKU).
+ */
 public class Product {
 
     private int skuId;
@@ -11,21 +13,23 @@ public class Product {
     private BigDecimal unitPrice;
     private int stockQty;
 
-    // No-argument constructor
     public Product() {
     }
 
-    // Parameterized constructor
-    public Product(int skuId, String name, String category,
-                   BigDecimal unitPrice, int stockQty) {
-        this.skuId = skuId;
+    public Product(String name, String category, BigDecimal unitPrice, int stockQty) {
         this.name = name;
         this.category = category;
         this.unitPrice = unitPrice;
         this.stockQty = stockQty;
     }
 
-    // Getters and Setters
+    public Product(int skuId, String name, String category, BigDecimal unitPrice, int stockQty) {
+        this.skuId = skuId;
+        this.name = name;
+        this.category = category;
+        this.unitPrice = unitPrice;
+        this.stockQty = stockQty;
+    }
 
     public int getSkuId() {
         return skuId;

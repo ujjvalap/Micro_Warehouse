@@ -1,24 +1,22 @@
-
 package com.warehouse.service;
 
 import com.warehouse.model.Product;
 
 import java.util.List;
+import java.util.Optional;
 
+/**
+ * Service interface for SKU Catalog & Inventory Replenishment (FR-1).
+ */
 public interface ProductService {
 
-    // Add a new product
-    void addProduct(Product product);
+    Product addProduct(Product product);
 
-    // View all products
     List<Product> getAllProducts();
 
-    // Search product by SKU ID
-    Product getProductById(int skuId);
+    Optional<Product> getProductById(int skuId);
 
-    // Update product price and category
-    void updateProduct(Product product);
+    Product updateProduct(Product product);
 
-    // Replenish existing stock
     void replenishStock(int skuId, int quantity);
 }

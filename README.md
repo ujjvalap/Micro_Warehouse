@@ -1,176 +1,239 @@
-# ⚡ Quick-Commerce Micro-Warehouse: Order Management & Fulfillment Hub
-
+# ⚡ Quick-Commerce Micro-Warehouse Inventory & Fulfillment Hub
 **Spring Mini Hackathon 2026 — Problem Statement #3**  
-**Module**: **Order Management (FR-2 & FR-3)**  
-**Technology Stack**: Java 17, Spring Boot 3.2.5, Spring JdbcTemplate, MySQL 8.x, Maven  
+**Domain**: Quick-Commerce (Q-Commerce) & Supply Chain (10-Minute Dark Store)  
+**Architecture**: Layered Spring Boot + Spring JdbcTemplate + MySQL 8.x + Maven (Java 21)
 
 ---
 
-## 📌 Executive Summary & Architectural Overview
-
-In a 10-minute quick-commerce delivery dark store (e.g., Zepto, Blinkit, Instamart), orders are placed and packed in high-velocity bursts. Microsecond inventory discrepancies lead to unfulfillable orders and customer churn.
-
-This module delivers the **Order Management & Fulfillment Hub**, engineered with strict transactional consistency and optimal database performance:
-1. **Multi-Item Batch Order Persistence (FR-2)**: Leverages Spring's `JdbcTemplate.batchUpdate()` with `BatchPreparedStatementSetter` to persist all line items for an order in a **single database round-trip**.
-2. **Atomic Inventory Verification & Deduction (FR-3)**: Pre-verifies available stock for every SKU in an order within a `@Transactional(rollbackFor = Exception.class)` boundary. If all items have sufficient stock, inventory is atomically deducted and the order is marked `CONFIRMED`. If any single SKU has insufficient stock, the order is marked `REJECTED` and **zero inventory is deducted** from warehouse stock.
-3. **Fulfillment & Dispatch Workflow**: Allows warehouse operators to inspect order invoices and dispatch confirmed orders (`CONFIRMED` ➔ `DISPATCHED`) for 10-minute delivery rider pickup.
-4. **Interactive Console CLI**: User-friendly console interface providing real-time catalog browsing, multi-item order placement, order lookup, dispatching, and an automated atomic stress test demo.
+## 📋 Table of Contents
+1. [Project Overview & Problem Context](#-project-overview--problem-context)
+2. [Functional Modules (FR-1 through FR-5)](#-functional-modules-fr-1-through-fr-5)
+3. [Unified Folder Structure](#-unified-folder-structure)
+4. [Spring Architecture & Beans Separation](#-spring-architecture--beans-separation)
+5. [Database Schema & Seed Data (MySQL)](#-database-schema--seed-data-mysql)
+6. [Team Collaboration & Module Ownership](#-team-collaboration--module-ownership)
+7. [How to Run Locally](#-how-to-run-locally)
+8. [Testing & Verification](#-testing--verification)
 
 ---
 
-## 🏛️ Tiered Architecture & Spring Beans
+## 🚀 Project Overview & Problem Context
+In 10-minute quick-commerce delivery dark stores (e.g., Zepto, Blinkit, Instamart), thousands of stock movements occur every minute. Microsecond inventory discrepancies lead to out-of-stock items, failed order fulfillments, and customer dissatisfaction.
 
-The codebase strictly follows clean tiered architectural separation:
+This application is a unified, production-ready solution that combines:
+- **Strict Stock Consistency**: Row-level locking (`SELECT ... FOR UPDATE`) and atomic inventory deductions ensure zero stock corruption on partial or failed orders.
+- **High-Velocity Batch Operations**: Spring `JdbcTemplate.batchUpdate()` persists multi-item orders in a single database round-trip.
+- **Automated Restock Threshold Monitoring**: Automatic alerts for SKUs dropping below critical thresholds (< 10 units) with rapid replenishment.
+- **Real-Time Fulfillment & Top-Mover Auditing**: SQL joins across `orders`, `order_items`, and `products` calculate fulfillment revenue and identify top-selling SKUs.
+- **Interactive Console CLI**: User-friendly menu connecting all dark store operations.
+
+---
+
+## 🎯 Functional Modules (FR-1 through FR-5)
+
+### FR-1: SKU Catalog & Inventory Replenishment
+- Register new product SKUs with name, category, unit price, and stock count.
+- Update product details (category, price).
+- Replenish stock quantities for existing products.
+- Handled by `ProductDao` and `ProductService`.
+
+### FR-2: Multi-Item Batch Order Creation
+- Accept orders containing multiple items and quantities.
+- Consolidate duplicate SKUs within the same order automatically.
+- Persist all line items into the `order_items` table in a **single round-trip** using Spring's `JdbcTemplate.batchUpdate()` and `BatchPreparedStatementSetter`.
+- Handled by `OrderItemDao` and `OrderService`.
+
+### FR-3: Atomic Inventory Deduction & Zero Corruption
+- Locks rows with `FOR UPDATE` and verifies stock for **every single SKU** in the order before making deductions.
+- If **all** items are available: inventory is deducted atomically, order status is set to `CONFIRMED`.
+- If **any single** SKU has insufficient stock: order status is set to `REJECTED`, and **zero stock is deducted** from any item.
+- Orders can be dispatched (`CONFIRMED` ➔ `DISPATCHED`) for 10-minute delivery rider pickup.
+- Handled by `OrderDao`, `ProductDao`, and `OrderService`.
+
+### FR-4: Automated Restock Alerts
+- Query products where `stock_qty` falls below a threshold (default `< 10` units).
+- Formatted alert view highlights critical SKUs and allows store pickers to trigger instant replenishment.
+- Handled by `ProductDao` and `RestockService`.
+
+### FR-5: Sales Revenue & Top-Mover Audit
+- Calculates total fulfillment revenue from `CONFIRMED` and `DISPATCHED` orders.
+- Identifies the top fast-moving SKUs by units sold and revenue generated.
+- Provides category-wise and daily sales breakdowns.
+- Handled by `SalesDao` and `SalesService`.
+
+---
+
+## 📂 Unified Folder Structure
 
 ```
-src/main/java/org/warehouse/
-├── Main.java                          # Spring Boot Application & CommandLineRunner
-├── config/
-│   └── DatabaseConfig.java            # @Configuration: DataSource, JdbcTemplate, PlatformTransactionManager
-├── model/
-│   ├── Order.java                     # Order header entity with grand total calculation
-│   ├── OrderItem.java                 # Line item entity (item_id, order_id, sku_id, quantity, subtotal)
-│   ├── OrderStatus.java               # Enum: PENDING, CONFIRMED, REJECTED, DISPATCHED
-│   └── Product.java                   # Product SKU entity (sku_id, name, category, unit_price, stock_qty)
-├── dto/
-│   ├── CreateOrderRequest.java        # Multi-item order request DTO
-│   ├── OrderItemRequest.java          # Individual line item request DTO (sku_id, quantity)
-│   └── OrderResult.java               # Order processing outcome, status, timing, and rejection reasons
-├── dao/
-│   ├── OrderDao.java                  # DAO Interface for order headers
-│   ├── OrderDaoImpl.java              # @Repository: KeyHolder, custom OrderRowMapper, parameterized SQL
-│   ├── OrderItemDao.java              # DAO Interface for line items
-│   ├── OrderItemDaoImpl.java          # @Repository: JdbcTemplate.batchUpdate(), custom OrderItemRowMapper
-│   ├── ProductDao.java                # DAO Interface for inventory checking & atomic deduction
-│   └── ProductDaoImpl.java            # @Repository: custom ProductRowMapper, atomic conditional UPDATEs
-├── service/
-│   ├── OrderService.java              # Business service interface
-│   └── OrderServiceImpl.java          # @Service: @Transactional atomic stock check, batch persistence
-└── cli/
-    └── OrderManagementCLI.java        # Interactive Console CLI for dark store order fulfillment
+Micro_Warehouse/
+├── pom.xml                                      # Maven project with Spring Boot 3.3.5 & Java 21
+├── README.md                                    # Comprehensive documentation
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── warehouse/
+│   │   │           ├── MicroWarehouseApplication.java   # Spring Boot Main & CommandLineRunner
+│   │   │           ├── cli/
+│   │   │           │   └── WarehouseConsoleCLI.java     # Interactive multi-module Console CLI
+│   │   │           ├── config/
+│   │   │           │   └── DatabaseConfig.java          # @Configuration: JdbcTemplate & TxManager
+│   │   │           ├── dao/
+│   │   │           │   ├── OrderDao.java                # Orders DAO interface
+│   │   │           │   ├── OrderItemDao.java            # Order items DAO interface
+│   │   │           │   ├── ProductDao.java              # Product & inventory DAO interface
+│   │   │           │   ├── SalesDao.java                # Sales & audit DAO interface
+│   │   │           │   └── impl/
+│   │   │           │       ├── OrderDaoImpl.java        # KeyHolder + custom RowMapper
+│   │   │           │       ├── OrderItemDaoImpl.java    # batchUpdate() + RowMapper
+│   │   │           │       ├── ProductDaoImpl.java      # Row-locking, batch deduction, parameterized SQL
+│   │   │           │       └── SalesDaoImpl.java        # Multi-table joins for revenue & top movers
+│   │   │           ├── dto/
+│   │   │           │   ├── CreateOrderRequest.java      # Order placement payload
+│   │   │           │   ├── OrderItemRequest.java        # Line item payload (sku_id, quantity)
+│   │   │           │   └── OrderResult.java             # Order fulfillment result DTO
+│   │   │           ├── model/
+│   │   │           │   ├── Order.java                   # Order header entity
+│   │   │           │   ├── OrderItem.java               # Order line item entity
+│   │   │           │   ├── OrderStatus.java             # Enum: PENDING, CONFIRMED, REJECTED, DISPATCHED
+│   │   │           │   ├── Product.java                 # Product SKU entity
+│   │   │           │   └── TopMoverReport.java          # Top-mover audit projection
+│   │   │           └── service/
+│   │   │               ├── OrderService.java            # Multi-item batch fulfillment service interface
+│   │   │               ├── ProductService.java          # Catalog management service interface
+│   │   │               ├── RestockService.java          # Restock alerts service interface
+│   │   │               ├── SalesService.java            # Revenue & top-mover service interface
+│   │   │               └── impl/
+│   │   │                   ├── OrderServiceImpl.java   # @Transactional atomic stock validation & batch insert
+│   │   │                   ├── ProductServiceImpl.java # Catalog and replenishment logic
+│   │   │                   ├── RestockServiceImpl.java # Low stock queries & quick restock
+│   │   │                   └── SalesServiceImpl.java   # Financial aggregations and top-mover ranking
+│   │   └── resources/
+│   │       ├── application.properties                   # MySQL connection, HikariCP, and init configs
+│   │       ├── data.sql                                 # Realistic grocery & dark-store seed data
+│   │       └── schema.sql                               # DDL schema with constraints & indexes
+│   └── test/
+│       └── java/
+│           └── com/
+│               └── warehouse/
+│                   ├── MicroWarehouseApplicationTests.java  # Spring Boot Context load test
+│                   ├── OrderServiceIntegrationTest.java     # FR-2 & FR-3 integration tests (atomic consistency)
+│                   ├── dao/
+│                   │   └── impl/
+│                   │       └── ProductDaoImplTest.java      # DAO unit tests with Mockito
+│                   └── service/
+│                       └── impl/
+│                           ├── ProductServiceImplTest.java  # Catalog service unit tests
+│                           ├── RestockServiceImplTest.java  # Restock service unit tests
+│                           └── SalesServiceImplTest.java    # Sales audit service unit tests
 ```
 
 ---
 
-## 💾 Database Schema (`schema.sql` & `data.sql`)
+## 🏛️ Spring Architecture & Beans Separation
 
-Relational schema with foreign keys, cascading rules, check constraints, and performance indexes:
-
-### `products`
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `sku_id` | INT | PRIMARY KEY AUTO_INCREMENT | Unique SKU identifier |
-| `name` | VARCHAR(150) | NOT NULL | Product name |
-| `category` | VARCHAR(50) | NOT NULL | Dairy, Produce, Snacks, Beverages, Household |
-| `unit_price`| DECIMAL(10,2) | NOT NULL, CHECK(>= 0) | Retail price |
-| `stock_qty` | INT | NOT NULL, CHECK(>= 0) | Available stock count |
-
-### `orders`
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `order_id` | INT | PRIMARY KEY AUTO_INCREMENT | Unique order number |
-| `customer_phone` | VARCHAR(15) | NOT NULL | Customer contact phone |
-| `order_status` | VARCHAR(30) | NOT NULL | PENDING, CONFIRMED, REJECTED, DISPATCHED |
-| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Order creation timestamp |
-
-### `order_items`
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `item_id` | INT | PRIMARY KEY AUTO_INCREMENT | Line item ID |
-| `order_id` | INT | FK -> orders(order_id) | Parent order |
-| `sku_id` | INT | FK -> products(sku_id) | Referenced product |
-| `quantity` | INT | NOT NULL, CHECK(> 0) | Ordered quantity |
-| `subtotal` | DECIMAL(10,2)| NOT NULL, CHECK(>= 0) | `quantity * unit_price` |
+| Layer | Annotation | Responsibility |
+|---|---|---|
+| **Configuration** | `@Configuration` | `DatabaseConfig`: Defines `JdbcTemplate` with fetch size tuning and `PlatformTransactionManager` (`DataSourceTransactionManager`). |
+| **DAO / Repository** | `@Repository` | `ProductDaoImpl`, `OrderDaoImpl`, `OrderItemDaoImpl`, `SalesDaoImpl`: Parameterized SQL, custom `RowMapper` lambdas, `JdbcTemplate.batchUpdate()`, and safe `DataAccessException` handling. |
+| **Service Tier** | `@Service` | `OrderServiceImpl`, `ProductServiceImpl`, `RestockServiceImpl`, `SalesServiceImpl`: Business rules, validation, and `@Transactional(rollbackFor = Exception.class)` boundary management. |
+| **User Interaction** | `@Component` | `WarehouseConsoleCLI`: Formatted menus, user input validation, colored status indicators, and stress-test demo. |
 
 ---
 
-## ⚙️ How It Implements the Core Requirements
+## 💾 Database Schema & Seed Data (MySQL)
 
-### 1. FR-2: Multi-Item Batch Order Persistence via `JdbcTemplate.batchUpdate()`
-Line items are inserted efficiently using Spring's batch API in `OrderItemDaoImpl.java`:
-```java
-String sql = "INSERT INTO order_items (order_id, sku_id, quantity, subtotal) VALUES (?, ?, ?, ?)";
-jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-    @Override
-    public void setValues(PreparedStatement ps, int i) throws SQLException {
-        OrderItem item = items.get(i);
-        ps.setInt(1, orderId);
-        ps.setInt(2, item.getSkuId());
-        ps.setInt(3, item.getQuantity());
-        ps.setBigDecimal(4, item.getSubtotal());
-    }
-    @Override
-    public int getBatchSize() {
-        return items.size();
-    }
-});
+### Table: `products`
+```sql
+CREATE TABLE products (
+    sku_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    stock_qty INT NOT NULL,
+    CONSTRAINT chk_unit_price CHECK (unit_price >= 0),
+    CONSTRAINT chk_stock_qty CHECK (stock_qty >= 0)
+);
 ```
 
-### 2. FR-3: Atomic Inventory Deduction with Zero Stock Corruption
-Within `OrderServiceImpl.createAndProcessOrder()`:
-1. **Pre-check**: For each requested SKU, verify that the SKU exists and `stock_qty >= requested_quantity`.
-2. **If any SKU is insufficient**:
-   - The entire order is saved as `REJECTED`.
-   - **Zero stock is deducted** for any item (even items that had sufficient stock).
-   - Descriptive rejection reasons are logged and returned to the caller.
-3. **If all SKUs have sufficient stock**:
-   - Under `@Transactional`, each SKU's inventory is deducted using parameterized conditional SQL:
-     ```sql
-     UPDATE products SET stock_qty = stock_qty - ? WHERE sku_id = ? AND stock_qty >= ?
-     ```
-   - Order status is saved as `CONFIRMED`.
-   - All line items are persisted via single-trip `batchUpdate()`.
+### Table: `orders`
+```sql
+CREATE TABLE orders (
+    order_id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_phone VARCHAR(15) NOT NULL,
+    order_status VARCHAR(30) NOT NULL, -- PENDING, CONFIRMED, REJECTED, DISPATCHED
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Table: `order_items`
+```sql
+CREATE TABLE order_items (
+    item_id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    sku_id INT NOT NULL,
+    quantity INT NOT NULL,
+    subtotal DECIMAL(10, 2) NOT NULL,
+    CONSTRAINT fk_order_items_orders FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
+    CONSTRAINT fk_order_items_products FOREIGN KEY (sku_id) REFERENCES products(sku_id),
+    CONSTRAINT chk_quantity CHECK (quantity > 0),
+    CONSTRAINT chk_subtotal CHECK (subtotal >= 0)
+);
+```
 
 ---
 
-## 🚀 Running the Application & Interactive Demo
+## 👥 Team Collaboration & Module Ownership
+
+| Member | Module / Focus Area | Key Contributions |
+|---|---|---|
+| **Member 1** | **FR-1**: SKU Catalog & Replenishment | `ProductDao`, `ProductService`, SKU registration, stock replenishment. |
+| **Member 2** | **FR-2**: Multi-Item Batch Persistence | `OrderItemDao`, `JdbcTemplate.batchUpdate()`, `BatchPreparedStatementSetter`. |
+| **Member 3** | **FR-3**: Atomic Inventory Deduction | `OrderDao`, `OrderService`, row locking (`FOR UPDATE`), atomic rejection without stock corruption. |
+| **Member 4** | **FR-4**: Automated Restock Alerts | `RestockService`, low-stock queries (< 10 units), picker alert notifications. |
+| **Member 5** | **FR-5**: Sales Revenue & Top Movers | `SalesDao`, `SalesService`, multi-table SQL joins, top-mover ranking. |
+| **Member 6** | **Architecture & Console CLI** | `DatabaseConfig`, `WarehouseConsoleCLI`, `MicroWarehouseApplication`, schema & integration. |
+
+---
+
+## ⚙️ How to Run Locally
 
 ### Prerequisites
-- Java 17+
-- Apache Maven
-- MySQL 8.x running on `localhost:3306` with database `micro_warehouse` (configured in `application.properties`)
+- **Java**: JDK 21 (or 17)
+- **Maven**: 3.8+
+- **MySQL Server**: 8.x running on `localhost:3306` with username `root` and password `root` (or update `src/main/resources/application.properties`).
 
-### Run Interactive Console CLI
+### 1. Build and Run Tests
+```bash
+mvn clean test
+```
+
+### 2. Launch the Interactive Application
 ```bash
 mvn spring-boot:run
 ```
-Once launched, you will see the interactive dark store menu:
-```
-============================================================================
-   ⚡ QUICK-COMMERCE 10-MIN DARK STORE: MICRO-WAREHOUSE ORDER HUB ⚡
-   [Spring JdbcTemplate • Atomic Inventory Deduction • Batch Processing]   
-============================================================================
-
------------------ 📦 ORDER MANAGEMENT MENU -----------------
- [1] 📋 View Live Product Catalog & Stock Levels
- [2] 🛒 Place Multi-Item Order (FR-2 Batch Insert + FR-3 Atomic Stock)
- [3] 🔍 Look Up Order by Order ID (Itemized Invoice)
- [4] 🚚 Dispatch Order for 10-Min Delivery (CONFIRMED -> DISPATCHED)
- [5] 📜 View All Warehouse Orders (Filter by Status)
- [6] 📱 Search Order History by Customer Phone
- [7] 🧪 Run Atomic Rollback / Consistency Stress Demo
- [0] 🚪 Exit Application
-------------------------------------------------------------
-```
-
-### Run Automated Test Suite
-```bash
-mvn test
-```
-The integration test suite (`OrderServiceIntegrationTest.java`) tests:
-- Multi-item batch order creation with accurate stock deduction.
-- Atomic order rejection with zero stock deduction when any single SKU has insufficient stock.
-- Order dispatch transition from `CONFIRMED` to `DISPATCHED`.
 
 ---
 
-## 👥 GitHub Collaboration & Branching Strategy
+## 🧪 Testing & Verification
 
-For team delivery in a 6-member hackathon:
-- **Branch**: `feature/order-management`
-- **Modules Covered**:
-  - `OrderDao` & `OrderItemDao` (`batchUpdate()`, custom `RowMapper`s, `KeyHolder`)
-  - `OrderService` (Atomic multi-item order fulfillment, rejection handling, dispatching)
-  - `OrderManagementCLI` (Interactive console user interface)
-  - `schema.sql` & `data.sql` (Relational tables and seed data)
-  - `OrderServiceIntegrationTest` (Automated integration verification)
+The project includes 22 automated unit and integration tests:
+- **`OrderServiceIntegrationTest`**:
+  - Tests multi-item order placement with `JdbcTemplate.batchUpdate()`
+  - Verifies atomic rejection: attempts an order with 1 valid item and 1 over-requested item, verifying that **zero stock is deducted** from the valid item.
+  - Tests order dispatching (`CONFIRMED` ➔ `DISPATCHED`).
+- **`ProductDaoImplTest` & `ProductServiceImplTest`**:
+  - Tests SKU addition, query, update, and replenishment.
+- **`RestockServiceImplTest`**:
+  - Tests threshold filtering for low-stock SKUs.
+- **`SalesServiceImplTest`**:
+  - Tests fulfillment revenue calculation and top-mover ranking.
+- **`MicroWarehouseApplicationTests`**:
+  - Tests Spring application context loading and HikariCP connection pooling.
+
+```
+[INFO] Results:
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+```

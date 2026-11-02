@@ -1,9 +1,7 @@
-
 package com.warehouse.service.impl;
 
 import com.warehouse.dao.ProductDao;
 import com.warehouse.model.Product;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -32,26 +31,23 @@ class ProductServiceImplTest {
     void setUp() {
         product = new Product(
                 1,
-                "Laptop",
-                "Electronics",
-                new BigDecimal("55000.00"),
-                10
+                "Amul Taaza Milk 1L",
+                "Dairy",
+                new BigDecimal("54.00"),
+                50
         );
     }
 
     @Test
     void testAddProduct() {
-
         when(productDao.addProduct(product)).thenReturn(1);
 
         assertDoesNotThrow(() -> productService.addProduct(product));
-
         verify(productDao).addProduct(product);
     }
 
     @Test
     void testAddProductWithInvalidPrice() {
-
         product.setUnitPrice(BigDecimal.ZERO);
 
         assertThrows(
@@ -64,65 +60,52 @@ class ProductServiceImplTest {
 
     @Test
     void testGetAllProducts() {
-
-        when(productDao.getAllProducts())
-                .thenReturn(List.of(product));
+        when(productDao.findAll()).thenReturn(List.of(product));
 
         List<Product> products = productService.getAllProducts();
 
         assertEquals(1, products.size());
-        assertEquals("Laptop", products.get(0).getName());
+        assertEquals("Amul Taaza Milk 1L", products.get(0).getName());
     }
 
     @Test
     void testGetProductById() {
+        when(productDao.findById(1)).thenReturn(Optional.of(product));
 
-        when(productDao.getProductById(1)).thenReturn(product);
+        var result = productService.getProductById(1);
 
-        Product result = productService.getProductById(1);
-
-        assertNotNull(result);
-        assertEquals("Laptop", result.getName());
+        assertTrue(result.isPresent());
+        assertEquals("Amul Taaza Milk 1L", result.get().getName());
     }
 
     @Test
     void testGetProductByIdWhenNotFound() {
+        when(productDao.findById(99)).thenReturn(Optional.empty());
 
-        when(productDao.getProductById(99)).thenReturn(null);
-
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> productService.getProductById(99)
-        );
+        var result = productService.getProductById(99);
+        assertTrue(result.isEmpty());
     }
 
     @Test
     void testUpdateProduct() {
-
-        when(productDao.getProductById(1)).thenReturn(product);
+        when(productDao.findById(1)).thenReturn(Optional.of(product));
         when(productDao.updateProduct(product)).thenReturn(1);
 
         assertDoesNotThrow(() -> productService.updateProduct(product));
-
         verify(productDao).updateProduct(product);
     }
 
     @Test
     void testReplenishStock() {
-
-        when(productDao.getProductById(1)).thenReturn(product);
+        when(productDao.findById(1)).thenReturn(Optional.of(product));
         when(productDao.replenishStock(1, 5)).thenReturn(1);
 
-        assertDoesNotThrow(
-                () -> productService.replenishStock(1, 5)
-        );
-
+        assertDoesNotThrow(() -> productService.replenishStock(1, 5));
         verify(productDao).replenishStock(1, 5);
     }
 
     @Test
     void testReplenishStockWithInvalidQuantity() {
-
         assertThrows(
                 IllegalArgumentException.class,
                 () -> productService.replenishStock(1, -5)
