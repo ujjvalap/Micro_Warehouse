@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS products (
+    sku_id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    stock_qty INT NOT NULL DEFAULT 0
+);
