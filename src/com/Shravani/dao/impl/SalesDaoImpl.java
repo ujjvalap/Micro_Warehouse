@@ -1,8 +1,8 @@
 
-package com.warehouse.dao.impl;
+package com.Shravani.dao.impl;
 
-import com.warehouse.config.DBConnection;
-import com.warehouse.dao.SalesDao;
+import com.Shravani.config.DBConnection;
+import com.Shravani.dao.SalesDao;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;

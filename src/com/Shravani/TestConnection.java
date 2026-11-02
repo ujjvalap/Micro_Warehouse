@@ -1,7 +1,7 @@
 
-package com.warehouse;
+package com.Shravani;
 
-import com.warehouse.config.DBConnection;
+import com.Shravani.config.DBConnection;
 import java.sql.Connection;
 import java.sql.SQLException;
 
