@@ -1,7 +1,7 @@
-package com.warehouse.service.impl;
+package com.Shravani.service.impl;
 
-import com.warehouse.dao.SalesDao;
-import com.warehouse.service.SalesService;
+import com.Shravani.dao.SalesDao;
+import com.Shravani.service.SalesService;
 
 import java.util.List;
 import java.util.Map;

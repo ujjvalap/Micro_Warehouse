@@ -1,6 +1,6 @@
 
 
-package com.warehouse.config;
+package com.Shravani.config;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
