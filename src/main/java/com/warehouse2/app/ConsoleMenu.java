@@ -1,5 +1,5 @@
 
-package com.warehouse.app;
+package com.warehouse2.app;
 
 import org.springframework.stereotype.Component;
 
